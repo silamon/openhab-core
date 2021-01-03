@@ -145,7 +145,7 @@ public class ThingManagerImpl
     private final Map<ThingUID, ThingHandler> thingHandlers = new ConcurrentHashMap<>();
     private final Map<ThingHandlerFactory, Set<ThingHandler>> thingHandlersByFactory = new HashMap<>();
 
-    private final Set<Thing> things = new CopyOnWriteArraySet<>();
+    private final Map<ThingUID, Thing> things = new ConcurrentHashMap<>();
     private final Map<ThingUID, Lock> thingLocks = new HashMap<>();
     private final Set<ThingUID> thingUpdatedLock = new HashSet<>();
     private final Set<String> loadedXmlThingTypes = new CopyOnWriteArraySet<>();
@@ -399,7 +399,7 @@ public class ThingManagerImpl
             @Override
             public void onReadyMarkerAdded(ReadyMarker readyMarker) {
                 startLevelSetterJob = scheduler.scheduleWithFixedDelay(() -> {
-                    for (Thing t : things) {
+                    for (Thing t : things.values()) {
                         if (!ThingHandlerHelper.isHandlerInitialized(t) && t.isEnabled()) {
                             return;
                         }
@@ -509,7 +509,7 @@ public class ThingManagerImpl
 
     @Override
     public void thingAdded(Thing thing, ThingTrackerEvent thingTrackerEvent) {
-        this.things.add(thing);
+        things.put(thing.getUID(), thing);
         logger.debug("Thing '{}' is tracked by ThingManager.", thing.getUID());
         if (!isHandlerRegistered(thing)) {
             registerAndInitializeHandler(thing, getThingHandlerFactory(thing));
@@ -542,7 +542,7 @@ public class ThingManagerImpl
             }
         }
 
-        this.things.remove(thing);
+        things.remove(thing.getUID());
     }
 
     @Override
@@ -603,18 +603,16 @@ public class ThingManagerImpl
         final ThingHandler thingHandler = thingHandlers.get(newThing.getUID());
         if (oldThing != newThing) {
             if (oldThing != null) {
-                this.things.remove(oldThing);
+                things.remove(oldThing.getUID());
             }
-            this.things.add(newThing);
+            things.put(newThing.getUID(), newThing);
         }
         return thingHandler;
     }
 
-    private @Nullable Thing getThing(ThingUID id) {
-        for (Thing thing : this.things) {
-            if (thing.getUID().equals(id)) {
-                return thing;
-            }
+    private @Nullable Thing getThing(ThingUID UID) {
+        if (things.containsKey(UID)) {
+            return things.get(UID);
         }
         return null;
     }
@@ -1086,7 +1084,7 @@ public class ThingManagerImpl
         thingHandlerFactories.stream().filter(it -> {
             return bundleIdentifier.equals(getBundleIdentifier(it));
         }).forEach(thingHandlerFactory -> {
-            things.forEach(thing -> {
+            for (Thing thing : things.values()) {
                 if (thingHandlerFactory.supportsThingType(thing.getThingTypeUID())) {
                     if (!isHandlerRegistered(thing)) {
                         registerAndInitializeHandler(thing, thingHandlerFactory);
@@ -1094,7 +1092,7 @@ public class ThingManagerImpl
                         logger.debug("Thing handler for thing '{}' already registered", thing.getUID());
                     }
                 }
-            });
+            }
         });
     }
 
